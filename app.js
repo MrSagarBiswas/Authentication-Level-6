@@ -7,7 +7,6 @@ const mongoose = require("mongoose");
 const session = require("express-session");
 const passport = require("passport");
 const passportLocalMongoose = require("passport-local-mongoose");
-const e = require("express");
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const findOrCreate = require('mongoose-findorcreate');
 
@@ -36,6 +35,9 @@ const userSchema = new mongoose.Schema({
         type: String
     },
     googleId: {
+        type: String
+    },
+    secret: {
         type: String
     }
 });
@@ -68,7 +70,6 @@ passport.use(new GoogleStrategy({
     callbackURL: "http://localhost:3000/auth/google/secrets"
 },
     function (accessToken, refreshToken, profile, cb) {
-        console.log(profile);
         users.findOrCreate({ googleId: profile.id, username: profile.displayName }, function (err, user) {
             return cb(err, user);
         });
@@ -87,16 +88,21 @@ app.get('/auth/google/secrets',
     passport.authenticate('google', { failureRedirect: '/register' }),
     function (req, res) {
         // Successful authentication, redirect home.
-        res.render("secrets");
+        res.redirect("/secrets");
     }
 );
 
 app.get("/secrets", (req, res) => {
-    if (req.isAuthenticated()) {
-        res.render("secrets");
-    } else {
-        res.redirect("/login");
-    }
+    users.find({"secret": {$ne: null}}, (err, foundUsers) => {
+        if(err){
+            console.log(err)
+        } else {
+            if(foundUsers){
+                console.log("hello" + foundUsers);
+                res.render("secrets", { usersWithSecrets: foundUsers });
+            }
+        }
+    })
 })
 
 app.get("/logout", (req, res, next) => {
@@ -161,6 +167,31 @@ app.route("/login")
             }
         })
     })
+
+app.get('/submit', (req, res) => {
+    if(req.isAuthenticated()) {
+        res.render('submit');
+    } else {
+        redirect('/login');
+    }
+})
+
+app.post("/submit", (req, res) => {
+    const newSecret = req.body.secret;
+    users.findOne({googleId: req.user.googleId}, (err, foundUser) => {
+        if(err){
+            console.log(err);
+        } else {
+            if(foundUser) {
+                foundUser.secret = newSecret;
+                foundUser.save(() => {
+                    res.redirect("/secrets");
+                })
+            }
+        }
+    })
+    console.log(req.user);
+})
 
 app.listen(3000, () => {
     console.log("Hosted on Port 3000");
